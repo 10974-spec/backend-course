@@ -1,30 +1,57 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import User from "../models/user.model.js";
+import { JWT_EXPIRES, JWT_SECRET } from "../config/env.js";
 
 export const signUp = async (req, res, next) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-
-    const { name , email, password} = req.body;
+    const { name, email, password } = req.body;
 
     //check if a user already exists
     const existingUser = await User.findOne({
-        email });
+      email,
+    });
 
-    if(existingUser){
-        const error = new Error('User already exists');
-        error.statusCode = 409;
-        throw error;
+    if (existingUser) {
+      const error = new Error("User already exists");
+      error.statusCode = 409;
+      throw error;
     }
 
-    //hash the password 
+    //hash the password
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    const newUser = await User.create(
+      [
+        {
+          name,
+          email,
+          password: hashedPassword,
+        },
+      ],
+      { session }
+    );
+
+    const token = jwt.sign({ userId: newUser[0]._id }, JWT_SECRET, {
+      expiresIn: JWT_EXPIRES,
+    });
 
     await session.commitTransaction();
+    session.endSession();
+    res.status(201).json({
+      message: "User created successfully",
+      data: {
+        token,
+        user: newUser[0]
+      }
+    });
+
+
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
